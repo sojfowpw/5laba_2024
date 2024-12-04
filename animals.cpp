@@ -3,7 +3,7 @@
 using namespace std;
 
 class Animal { // родительский класс животных 
-    public:
+    public: //
     int x, y;
     Animal(int a_x, int a_y, int a_direction, int a_k) : x(a_x), y(a_y), direction(a_direction), k(a_k) {}
     virtual ~Animal() {} // деструктор
