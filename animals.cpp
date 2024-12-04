@@ -1,24 +1,77 @@
 #include <iostream>
+#include <vector>
+#include <algorithm>
 
 using namespace std;
 
 class Animal { // родительский класс животных 
     public:
-    int x, y;
-    Animal(int x, int y, int direction, int k) : x(x), y(y), direction(direction), k(k) {}
+    Animal(int x, int y, int direction, int k, int maxAge) : x(x), y(y), direction(direction), k(k), age(0), maxAge(maxAge) {}
     virtual ~Animal() {} // деструктор
 
     virtual void moving(int M, int N) = 0; // движение
-    virtual void eating(Animal& rabbit) = 0; // питание
+    virtual void eating(vector<Animal*>& animals) = 0; // питание
+    virtual void reproduce(vector<Animal*>& animals) = 0;
+    
+    void aging() { // старение
+        age++;
+    }
+    bool isDead() { // вымирание
+        return age >= maxAge;
+    }
+
+    int getX() {
+        return x;
+    }
+    int getY() {
+        return y;
+    }
 
     protected:
+    int x, y;
     int direction;
     int k;
+    int age, maxAge;
+};
+
+class Victim : public Animal { // класс жертва
+    public:
+    Victim(int x, int y, int direction, int k, int maxAge) : Animal(x, y, direction, k, maxAge) {}
+
+    void moving(int M, int N) override { // движение
+        static int moveCount = 0; // счётчик ходов
+        if (moveCount % k == 0 && moveCount != 0) {
+            direction = (direction + 1) % 4; // смена направления
+        }
+        switch (direction) {
+            case 0: // вверх
+                y = (y - 1 + M) % M;
+                break;
+            case 1: // вправо
+                x = (x + 1) % N;
+                break;
+            case 2: // вниз
+                y = (y + 1) % M;
+                break;
+            case 3: // влево
+                x = (x - 1 + N) % N;
+                break;
+        }
+        moveCount++;
+    }
+
+    void eating(vector<Animal*>& animals) override {}
+
+    void reproduce(vector<Animal*>& animals) override {
+        if (age == 5 || age == 10) {
+            animals.push_back(new Victim(x, y, direction, k, maxAge));
+        }
+    }
 };
 
 class Predator : public Animal { // класс хищник
     public:
-    Predator(int x, int y, int direction, int k, int hungerThreshold) : Animal(x, y, direction, k), hunger(0),
+    Predator(int x, int y, int direction, int k, int maxAge, int hungerThreshold) : Animal(x, y, direction, k, maxAge), hunger(0),
     hungerThreshold(hungerThreshold) {}
 
     void moving(int M, int N) override { // движение
@@ -43,11 +96,22 @@ class Predator : public Animal { // класс хищник
         moveCount++;
     }
 
-    void eating(Animal& rabbit) override {
-        if (x == rabbit.x && y == rabbit.y) {
-            hunger++;
+    void eating(vector<Animal*>& animals) override { // поедание
+        auto it = remove_if(animals.begin(), animals.end(), [this](Animal* a){
+            if (a != this && a->getX() == x && a->getY() == y && dynamic_cast<Victim*>(a)) {
+                hunger++; // если координаты совпадают и объект из класса жертва
+                return true;
+            }
+            return false;
+        });
+        animals.erase(it, animals.end());
+    }
+
+    void reproduce(vector<Animal*>& animals) override { // размножение
+        if (hunger >= hungerThreshold) { // если насыщение >= 2
+            animals.push_back(new Predator(x, y, direction, k, maxAge, hungerThreshold));
+            hunger = 0;
         }
-        cout << hunger << endl;
     }
 
     private:
@@ -55,74 +119,69 @@ class Predator : public Animal { // класс хищник
     int hungerThreshold; // максимальное насыщение
 };
 
-class Victim : public Animal { // класс жертва
-    public:
-    Victim(int x, int y, int direction, int k) : Animal(x, y, direction, k) {}
-
-    void moving(int M, int N) override { // движение
-        static int moveCount = 0; // счётчик ходов
-        if (moveCount % k == 0 && moveCount != 0) {
-            direction = (direction + 1) % 4; // смена направления
+void printField(int M, int N, vector<Animal*>& animals) { // вывод поля
+    vector<vector<int>> field(M, vector<int>(N, 0)); // матрица нулей
+    for (Animal* animal : animals) {
+        if (dynamic_cast<Predator*>(animal)) { // считаем количество хищников
+            field[animal->getY()][animal->getX()]--;
+        } else if (dynamic_cast<Victim*>(animal)) { // считаем количество жертв
+            field[animal->getY()][animal->getX()]++;
         }
-        switch (direction) {
-            case 0: // вверх
-                y = (y - 1 + M) % M;
-                break;
-            case 1: // вправо
-                x = (x + 1) % N;
-                break;
-            case 2: // вниз
-                y = (y + 1) % M;
-                break;
-            case 3: // влево
-                x = (x - 1 + N) % N;
-                break;
-        }
-        moveCount++;
     }
-
-    void eating(Animal& rabbit) override {}
-};
-
-void printField(int M, int N, Animal& wolf, Animal& rabbit) { // вывод поля
-    for (int i = 0; i < M; i++) {
-        for (int j = 0; j < N; j++) {
-            if (i == wolf.y && j == wolf.x) {
-                cout << "w";
-            }
-            else if (i == rabbit.y && j == rabbit.x) {
-                cout << "r";
-            }
-            else {
-                cout << "*";
+    for (int y = 0; y < M; ++y) {
+        for (int x = 0; x < N; ++x) {
+            if (field[y][x] == 0) {
+                cout << '*';
+            } else if (field[y][x] > 0) {
+                cout << '+' << field[y][x];
+            } else {
+                cout << field[y][x];
             }
         }
         cout << endl;
     }
+    cout << "\n\n";
+}
+
+void life(int M, int N, int T, vector<Animal*>& animals) {
+    for (int i = 0; i < T; i++) {
+        for (Animal* animal : animals) {
+            animal->moving(M, N);
+        }
+        for (Animal* animal : animals) {
+            animal->eating(animals);
+        }
+        for (Animal* animal : animals) {
+            animal->aging();
+        }
+        for (Animal* animal : animals) {
+            animal->reproduce(animals);
+        }
+        animals.erase(remove_if(animals.begin(), animals.end(), [](Animal* a) {
+            return a->isDead();
+        }), animals.end());
+        printField(M, N, animals);
+    }
 }
 
 int main() {
-    int M, N;//, T; // размеры поля и количество ходов
-    cin >> M >> N; // M - длина, N - ширина
-    Predator wolf(0, 0, 1, 100, 2);
-    Victim rabbit(0, 0, 1, 100);
-    printField(M, N, wolf, rabbit);
-    cout << endl << endl;
-    // int R, W; // начальное количество жертв и хищников
-    // int x, y, d, k; // x, y - координаты ({0, 0} - левый верхний угол), d - начальное направление, k - ходы перед сменой направления
-    // for (int i = 0; i < R; i++) {
-    //     cin >> x >> y >> d >> k;
-    // }
-    // for (int i = 0; i < W; i++) {
-    //     cin >> x >> y >> d >> k;
-    // }
-    for (int i = 0; i < 7; i++) {
-        wolf.moving(M, N);
-        rabbit.moving(M, N);
-        wolf.eating(rabbit);
-        printField(M, N, wolf, rabbit);
-        cout << endl << endl;
+    int M, N, T; // размеры поля и количество ходов
+    cin >> M >> N >> T; // M - длина, N - ширина
+    vector<Animal*> animals;
+    int R, W; // начальное количество жертв и хищников
+    cin >> R >> W;
+    int x, y, d, k; // x, y - координаты ({0, 0} - левый верхний угол), d - начальное направление, k - ходы перед сменой направления
+    for (int i = 0; i < R; i++) {
+        cin >> x >> y >> d >> k;
+        animals.push_back(new Victim(x, y, d, k, 10));
     }
-    //delete &a;
+    for (int i = 0; i < W; i++) {
+        cin >> x >> y >> d >> k;
+        animals.push_back(new Predator(x, y, d, k, 15, 2));
+    }
+    life(M, N, T, animals);
+    for (Animal* animal : animals) {
+        delete animal;
+    }
     return 0;
 }
