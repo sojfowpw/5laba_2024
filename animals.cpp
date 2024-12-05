@@ -5,8 +5,8 @@
 using namespace std;
 
 class Animal { // родительский класс животных 
-    public:
-    Animal(int x, int y, int direction, int k, int maxAge) : x(x), y(y), direction(direction), k(k), age(0), maxAge(maxAge) {}
+public:
+    Animal(int x, int y, int direction, int k, int maxAge) : x(x), y(y), direction(direction), k(k), age(0), maxAge(maxAge), moveCount(0) {}
     virtual ~Animal() {} // деструктор
 
     virtual void moving(int M, int N) = 0; // движение
@@ -20,26 +20,26 @@ class Animal { // родительский класс животных
         return age >= maxAge;
     }
 
-    int getX() {
+    int getX() const {
         return x;
     }
-    int getY() {
+    int getY() const {
         return y;
     }
 
-    protected:
+protected:
     int x, y;
     int direction;
     int k;
     int age, maxAge;
+    int moveCount;
 };
 
 class Victim : public Animal { // класс жертва
-    public:
-    Victim(int x, int y, int direction, int k, int maxAge) : Animal(x, y, direction, k, maxAge) {}
+public:
+    Victim(int x, int y, int direction, int k, int maxAge, int moveCount) : Animal(x, y, direction, k, maxAge), moveCount(moveCount) {}
 
     void moving(int M, int N) override { // движение
-        static int moveCount = 0; // счётчик ходов
         if (moveCount % k == 0 && moveCount != 0) {
             direction = (direction + 1) % 4; // смена направления
         }
@@ -64,18 +64,19 @@ class Victim : public Animal { // класс жертва
 
     void reproduce(vector<Animal*>& animals) override {
         if (age == 5 || age == 10) {
-            animals.push_back(new Victim(x, y, direction, k, maxAge));
+            animals.push_back(new Victim(x, y, direction, k, maxAge, moveCount));
         }
     }
+
+    private:
+    int moveCount;
 };
 
 class Predator : public Animal { // класс хищник
-    public:
-    Predator(int x, int y, int direction, int k, int maxAge, int hungerThreshold) : Animal(x, y, direction, k, maxAge), hunger(0),
-    hungerThreshold(hungerThreshold) {}
+public:
+    Predator(int x, int y, int direction, int k, int maxAge, int hungerThreshold, int moveCount) : Animal(x, y, direction, k, maxAge), hunger(0), hungerThreshold(hungerThreshold), moveCount(moveCount) {}
 
     void moving(int M, int N) override { // движение
-        static int moveCount = 0; // счётчик ходов
         if (moveCount % k == 0 && moveCount != 0) {
             direction = (direction + 1) % 4; // смена направления
         }
@@ -100,6 +101,7 @@ class Predator : public Animal { // класс хищник
         auto it = remove_if(animals.begin(), animals.end(), [this](Animal* a){
             if (a != this && a->getX() == x && a->getY() == y && dynamic_cast<Victim*>(a)) {
                 hunger++; // если координаты совпадают и объект из класса жертва
+                cout << "Жертву съел хищник, насыщение = " << hunger << endl;
                 return true;
             }
             return false;
@@ -109,22 +111,23 @@ class Predator : public Animal { // класс хищник
 
     void reproduce(vector<Animal*>& animals) override { // размножение
         if (hunger >= hungerThreshold) { // если насыщение >= 2
-            animals.push_back(new Predator(x, y, direction, k, maxAge, hungerThreshold));
+            animals.push_back(new Predator(x, y, direction, k, maxAge, hungerThreshold, moveCount));
             hunger = 0;
         }
     }
 
-    private:
+private:
     int hunger; // текущее насыщение
     int hungerThreshold; // максимальное насыщение
+    int moveCount; // добавляем поле moveCount
 };
 
-void printField(int M, int N, vector<Animal*>& animals) { // вывод поля
+void printField(int M, int N, const vector<Animal*>& animals) { // вывод поля
     vector<vector<int>> field(M, vector<int>(N, 0)); // матрица нулей
-    for (Animal* animal : animals) {
-        if (dynamic_cast<Predator*>(animal)) { // считаем количество хищников
+    for (const Animal* animal : animals) {
+        if (dynamic_cast<const Predator*>(animal)) { // считаем количество хищников
             field[animal->getY()][animal->getX()]--;
-        } else if (dynamic_cast<Victim*>(animal)) { // считаем количество жертв
+        } else if (dynamic_cast<const Victim*>(animal)) { // считаем количество жертв
             field[animal->getY()][animal->getX()]++;
         }
     }
@@ -173,12 +176,14 @@ int main() {
     int x, y, d, k; // x, y - координаты ({0, 0} - левый верхний угол), d - начальное направление, k - ходы перед сменой направления
     for (int i = 0; i < R; i++) {
         cin >> x >> y >> d >> k;
-        animals.push_back(new Victim(x, y, d, k, 10));
+        animals.push_back(new Victim(x, y, d, k, 25, 0));
     }
     for (int i = 0; i < W; i++) {
         cin >> x >> y >> d >> k;
-        animals.push_back(new Predator(x, y, d, k, 15, 2));
+        animals.push_back(new Predator(x, y, d, k, 30, 2, 0));
     }
+    cout << "Начальное поле:\n";
+    printField(M, N, animals);
     life(M, N, T, animals);
     for (Animal* animal : animals) {
         delete animal;
